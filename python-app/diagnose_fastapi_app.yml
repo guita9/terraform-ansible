@@ -1,0 +1,70 @@
+---
+- name: Diagnose FastAPI Service Execution Issues
+  hosts: app-deployment_servers
+  become: yes # Needed for some checks and to simulate service user
+  vars:
+    app_dir: /var/www/fastapi_app
+    venv_dir: "{{ app_dir }}/venv"
+    app_user: ubuntu
+    app_port: 8000
+
+  tasks:
+    - name: Verify gunicorn executable exists and its permissions
+      ansible.builtin.command: "ls -l {{ venv_dir }}/bin/gunicorn"
+      register: gunicorn_exec_check
+      ignore_errors: true # Continue even if file is not found initially
+    - name: Print gunicorn executable check result
+      ansible.builtin.debug:
+        var: gunicorn_exec_check.stdout_lines
+      when: gunicorn_exec_check.rc == 0
+
+    - name: Check if gunicorn executable file exists (error message if not)
+      ansible.builtin.debug:
+        msg: "ERROR: Gunicorn executable not found at {{ venv_dir }}/bin/gunicorn"
+      when: gunicorn_exec_check.rc != 0
+
+    - name: List contents of virtual environment bin directory
+      ansible.builtin.command: "ls -l {{ venv_dir }}/bin/"
+      register: venv_bin_contents
+      ignore_errors: true # In case the venv directory doesn't exist
+    - name: Print venv bin contents
+      ansible.builtin.debug:
+        var: venv_bin_contents.stdout_lines
+      when: venv_bin_contents.rc == 0
+
+    - name: Get contents of requirements.txt
+      ansible.builtin.command: "cat {{ app_dir }}/requirements.txt"
+      register: reqs_content
+      ignore_errors: true # If file not found
+    - name: Print requirements.txt content
+      ansible.builtin.debug:
+        var: reqs_content.stdout_lines
+      when: reqs_content.rc == 0
+
+    - name: Check pip freeze inside virtual environment
+      ansible.builtin.command: "{{ venv_dir }}/bin/pip freeze"
+      register: pip_freeze_output
+      ignore_errors: true # If venv or pip command fails
+    - name: Print pip freeze output
+      ansible.builtin.debug:
+        var: pip_freeze_output.stdout_lines
+      when: pip_freeze_output.rc == 0
+
+    - name: Attempt to run the Gunicorn command manually as app_user
+      ansible.builtin.shell: |
+        sudo -u {{ app_user }} bash -c "
+          export PATH=\"{{ venv_dir }}/bin:$PATH\" && \
+          cd {{ app_dir }} && \
+          gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:{{ app_port }}
+        "
+      register: manual_gunicorn_run
+      ignore_errors: true # This command is expected to fail or hang; we want its stderr
+      args:
+        chdir: "{{ app_dir }}" # Ensure command runs from app directory
+        # Optional: Add a timeout if it hangs for too long, e.g., timeout: 10
+    - name: Print manual Gunicorn run output (stderr - most important for errors)
+      ansible.builtin.debug:
+        var: manual_gunicorn_run.stderr_lines
+    - name: Print manual Gunicorn run output (stdout)
+      ansible.builtin.debug:
+        var: manual_gunicorn_run.stdout_lines

@@ -1,0 +1,138 @@
+---
+- name: Deploy FastAPI Application with Local PostgreSQL (No Nginx)
+  hosts: app-deployment_servers
+  become: yes
+  vars:
+    app_dir: /var/www/fastapi_app         # Base directory on the server
+    venv_dir: "{{ app_dir }}/venv"
+    app_user: ubuntu
+    app_port: 8000
+    db_name: mycruddb
+    db_user: postgres
+    db_password: "your_strong_db_password" # <--- IMPORTANT: SET A STRONG PASSWORD HERE!
+    database_url: "postgresql://{{ db_user }}:{{ db_password }}@localhost:5432/{{ db_name }}"
+
+  tasks:
+    - name: Update apt cache (for Debian/Ubuntu)
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install common system dependencies (Python, pip, venv, build tools, PostgreSQL client libs)
+      ansible.builtin.package:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - build-essential
+          - libpq-dev
+        state: present
+
+    - name: Install PostgreSQL server
+      ansible.builtin.package:
+        name:
+          - postgresql
+          - postgresql-contrib
+        state: present
+
+    - name: Ensure PostgreSQL service is running and enabled
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Set password for postgres user
+      ansible.builtin.shell:
+        cmd: "echo \"ALTER USER {{ db_user }} WITH PASSWORD '{{ db_password }}';\" | sudo -u {{ db_user }} psql"
+
+    - name: Create PostgreSQL database for the application
+      ansible.builtin.shell:
+        cmd: "sudo -u {{ db_user }} psql -tc \"SELECT 1 FROM pg_database WHERE datname='{{ db_name }}'\" | grep -q 1 || sudo -u {{ db_user }} createdb -O {{ db_user }} {{ db_name }}"
+
+    - name: Pause to allow PostgreSQL to initialize (optional, but good for race conditions)
+      ansible.builtin.pause:
+        seconds: 5
+        prompt: "Waiting for PostgreSQL to be ready..."
+
+    - name: Create application base directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Copy application files into a package directory on the server
+      ansible.builtin.copy:
+        src: ./app # REMOVED THE TRAILING SLASH HERE
+        dest: "{{ app_dir }}/" # This will copy the 'app' directory itself into app_dir
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Ensure __init__.py exists in the app package directory (if not already present)
+      ansible.builtin.file:
+        path: "{{ app_dir }}/app/__init__.py" # Path now correctly points inside the copied 'app' directory
+        state: touch
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+
+    - name: Create Python virtual environment
+      ansible.builtin.command: "python3 -m venv {{ venv_dir }}"
+      args:
+        creates: "{{ venv_dir }}/bin/python"
+
+    - name: Install Python dependencies from requirements.txt
+      ansible.builtin.pip:
+        requirements: "{{ app_dir }}/app/requirements.txt" # Path remains correct for the new structure
+        virtualenv: "{{ venv_dir }}"
+        virtualenv_command: python3 -m venv
+
+    - name: Ensure Gunicorn and Uvicorn are installed in venv
+      ansible.builtin.pip:
+        name:
+          - gunicorn
+          - uvicorn
+        virtualenv: "{{ venv_dir }}"
+        virtualenv_command: python3 -m venv
+        state: present
+
+    - name: Run SQLAlchemy migrations (create tables)
+      ansible.builtin.shell:
+        cmd: "{{ venv_dir }}/bin/python -c \"from app.database import Base, engine; Base.metadata.create_all(bind=engine)\"" # Path remains correct
+        chdir: "{{ app_dir }}" # Remain in the base directory
+      environment:
+        DATABASE_URL: "{{ database_url }}"
+
+    - name: Create systemd service file for FastAPI app
+      ansible.builtin.template:
+        src: fastapi_app.service.j2
+        dest: /etc/systemd/system/fastapi_app.service
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - Reload systemd
+        - Start FastAPI app
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Restart FastAPI app
+      ansible.builtin.service:
+        name: fastapi_app
+        state: restarted
+
+    - name: Start FastAPI app
+      ansible.builtin.service:
+        name: fastapi_app
+        state: started
+        enabled: yes
+
+    - name: Restart PostgreSQL
+      ansible.builtin.service:
+        name: postgresql
+        state: restarted

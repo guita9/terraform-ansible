@@ -1,0 +1,2 @@
+[app-deployment_servers]
+54.89.160.22 ansible_user=ubuntu ansible_private_key_file=./sanjayssh.pem

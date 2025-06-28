@@ -1,0 +1,6 @@
+aws/Terraformlabs/.terraform/
+aws/Terraformlabs/.terraform.lock.hcl
+aws/Terraformlabs/*.tfstate
+aws/Terraformlabs/.tfstate.backup
+python-app/sanjayssh.pem
+
