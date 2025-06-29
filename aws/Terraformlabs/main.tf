@@ -42,6 +42,6 @@ resource "aws_instance" "my_ec2" {
   vpc_security_group_ids = [aws_security_group.ssh_sg.id]
 
   tags = {
-    Name = "MyTerraformEC2"
+    Name = "Terraform-Ansible"
   }
 }
