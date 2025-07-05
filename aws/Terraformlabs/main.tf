@@ -21,6 +21,14 @@ resource "aws_security_group" "ssh_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Allow Prometheus Node Exporter port
+  ingress {
+    from_port   = 9100
+    to_port     = 9100
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -45,3 +53,4 @@ resource "aws_instance" "my_ec2" {
     Name = "Terraform-Ansible"
   }
 }
+
