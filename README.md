@@ -74,3 +74,60 @@ Once the instance is launched, you can connect to it via SSH using the public IP
 
 ```bash
 ssh -i /path/to/your/sanjayssh.pem ec2-user@<instance_public_ip>
+```
+
+# FastAPI Application Deployment with Ansible
+
+This repository contains Ansible playbooks and configuration files to automate the deployment of a FastAPI application with a local PostgreSQL database on a remote server. The playbook is designed to be compatible with both Debian-based (e.g., Ubuntu) and Red Hat-based (e.g., CentOS, Rocky Linux) operating systems.
+
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Repository Structure](#repository-structure)
+- [Setup and Usage](#setup-and-usage)
+    - [1. Clone the Repository](#1-clone-the-repository)
+    - [2. Prepare your Ansible Environment](#2-prepare-your-ansible-environment)
+    - [3. Configure Inventory (hosts file)](#3-configure-inventory-hosts-file)
+    - [4. Place Your FastAPI Application](#4-place-your-fastapi-application)
+    - [5. Run the Ansible Playbook](#5-run-the-ansible-playbook)
+- [What the Playbook Does](#what-the-playbook-does)
+- [Customization](#customization)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Features
+
+* **Automated OS Setup**: Installs necessary system dependencies (Python, `pip`, `venv`, build tools) tailored for Debian/Ubuntu and Red Hat/CentOS/Rocky Linux.
+* **PostgreSQL Installation & Configuration**: Installs PostgreSQL server, sets the `postgres` user password, and creates the application database.
+* **FastAPI Application Deployment**: Copies your FastAPI application code to the server, sets up a Python virtual environment, and installs dependencies.
+* **Gunicorn & Uvicorn Setup**: Installs and configures Gunicorn with Uvicorn workers for serving the FastAPI application.
+* **Database Migrations**: Runs SQLAlchemy migrations to create necessary database tables.
+* **Systemd Service Management**: Creates and manages a systemd service to ensure your FastAPI application runs persistently and restarts automatically on failure or boot.
+* **Idempotent**: Can be run multiple times without causing unintended side effects, bringing the server to the desired state.
+
+## Prerequisites
+
+Before using this playbook, ensure you have:
+
+* **Ansible Installed**: On your local machine (control node).
+    ```bash
+    pip install ansible
+    ```
+* **SSH Access to Target Server(s)**:
+    * The target server should be a fresh installation of a Debian-based (e.g., Ubuntu) or Red Hat-based (e.g., CentOS, Rocky Linux) Linux distribution.
+    * You need an SSH private key (`sanjayssh.pem` as per the example) for passwordless authentication to the `ansible_user` (e.g., `ubuntu`) on the target server.
+    * The `ansible_user` must have `sudo` privileges without requiring a password (often configured by default on cloud images like AWS EC2's `ubuntu` or `ec2-user`).
+
+* **Your FastAPI Application Code**: Organized in a directory named `app/` with a `requirements.txt` file at its root. A minimal example structure for your `app/` directory might look like this:
+    ```
+    app/
+    ├── main.py        # Your FastAPI application entry point
+    ├── database.py    # SQLAlchemy setup and Base for migrations
+    ├── models.py      # Your SQLAlchemy models
+    ├── schemas.py     # Pydantic schemas
+    └── requirements.txt # Python dependencies (fastapi, uvicorn, sqlalchemy, psycopg2-binary, etc.)
+    ```
+
+## Repository Structure
