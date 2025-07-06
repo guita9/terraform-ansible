@@ -5,56 +5,106 @@
   vars:
     app_dir: /var/www/fastapi_app
     venv_dir: "{{ app_dir }}/venv"
-    app_user: ubuntu
+    # IMPORTANT: 'ubuntu' user is specific to Debian/Ubuntu.
+    # On RedHat/CentOS, a default user might be 'centos', 'ec2-user', or 'rocky'.
+    # You might need a task to create this user if it doesn't exist, or make this variable conditional
+    # based on ansible_os_family or ansible_distribution.
+    app_user: ubuntu 
     app_port: 8000
     db_name: mycruddb
     db_user: postgres
-    db_password: "Terraform@nsib1e33$$$10"
+    db_password: "postgres"
     database_url: "postgresql://{{ db_user }}:{{ db_password }}@localhost:5432/{{ db_name }}"
 
   tasks:
-    - name: update apt cache (for Debian/Ubuntu)
+    # --- OS-SPECIFIC PACKAGE MANAGER CACHE UPDATE ---
+    - name: Update apt cache (for Debian/Ubuntu)
       ansible.builtin.apt:
         update_cache: yes
       when: ansible_os_family == "Debian"
 
-    - name: Installing common system dependencies
+    - name: Update dnf cache (for RedHat-based)
+      ansible.builtin.dnf:
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+      # You might also consider 'yum' for older RedHat/CentOS versions if 'dnf' is not present:
+      # - name: Update yum cache (for older RedHat-based)
+      #   ansible.builtin.yum:
+      #     update_cache: yes
+      #   when: ansible_os_family == "RedHat" and ansible_distribution_major_version is version('7', '<=')
+
+    # --- OS-SPECIFIC COMMON SYSTEM DEPENDENCIES ---
+    - name: Installing common system dependencies (Debian/Ubuntu)
       ansible.builtin.package:
         name:
           - python3
           - python3-pip
           - python3-venv
-          - build-essential
-          - libpq-dev
+          - build-essential # For compiling Python packages like psycopg2-binary
+          - libpq-dev       # PostgreSQL client library headers for psycopg2-binary
         state: present
+      when: ansible_os_family == "Debian"
 
-    - name: Installing postgresql server
+    - name: Installing common system dependencies (RedHat-based)
+      ansible.builtin.package:
+        name:
+          - python3
+          - python3-pip
+          - python3-virtualenv # RedHat/CentOS often uses this instead of python3-venv
+          - gcc                # Equivalent to build-essential for compilation
+          - python3-devel      # Python development headers for compiling C extensions
+          - postgresql-devel   # PostgreSQL development headers for building against libpq
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    # --- OS-SPECIFIC POSTGRESQL SERVER INSTALLATION ---
+    - name: Installing postgresql server (Debian/Ubuntu)
       ansible.builtin.package:
         name:
           - postgresql
           - postgresql-contrib
         state: present
+      when: ansible_os_family == "Debian"
 
+    - name: Installing postgresql server (RedHat-based)
+      ansible.builtin.package:
+        name:
+          - postgresql-server # Common server package name for RedHat
+          - postgresql-contrib # Common contrib package name for RedHat
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    # --- ENSURE POSTGRESQL SERVICE IS RUNNING AND ENABLED ---
+    # This task uses the 'postgresql' service name, which is generally consistent
+    # across modern systemd-based Linux distributions for the main PostgreSQL service.
+    # If a specific RedHat version uses a different service name (e.g., postgresql-13),
+    # you might need to make this conditional, but it's usually not necessary for this.
     - name: Ensure postgre service is running and enabled
       ansible.builtin.service:
         name: postgresql
         state: started
         enabled: yes
 
-    - name: password for postgres user
+    # --- PostgreSQL Configuration (Shell commands) ---
+    # These shell commands are generally cross-platform as they interact with psql
+    # and createdb, which are part of PostgreSQL itself.
+    - name: Set password for postgres user
       ansible.builtin.shell:
         cmd: "echo \"ALTER USER {{ db_user }} WITH PASSWORD '{{ db_password }}';\" | sudo -u {{ db_user }} psql"
 
-    - name: creating postgre database for the application
+    - name: Creating postgre database for the application
       ansible.builtin.shell:
         cmd: "sudo -u {{ db_user }} psql -tc \"SELECT 1 FROM pg_database WHERE datname='{{ db_name }}'\" | grep -q 1 || sudo -u {{ db_user }} createdb -O {{ db_user }} {{ db_name }}"
 
-    - name: pause to allow postgre to initialize
+    - name: Pause to allow postgre to initialize
       ansible.builtin.pause:
         seconds: 5
-        prompt: "waiting for postgresql to be ready..."
+        prompt: "Waiting for postgresql to be ready..."
 
-    - name: create application base directory
+    # --- Application Deployment (Generally Compatible) ---
+    # These file/copy/template/pip tasks are mostly OS-agnostic as they operate
+    # on files, Python virtual environments, and standard Python tools.
+    - name: Create application base directory
       ansible.builtin.file:
         path: "{{ app_dir }}"
         state: directory
@@ -62,15 +112,15 @@
         group: "{{ app_user }}"
         mode: '0755'
 
-    - name: copy application files into a directory on the server
+    - name: Copy application files into a directory on the server
       ansible.builtin.copy:
-        src: ./app 
-        dest: "{{ app_dir }}/" 
+        src: ./app
+        dest: "{{ app_dir }}/"
         owner: "{{ app_user }}"
         group: "{{ app_user }}"
         mode: '0755'
 
-    - name: ensuring __init__.py exists in the app package directory, if not already present
+    - name: Ensuring __init__.py exists in the app package directory, if not already present
       ansible.builtin.file:
         path: "{{ app_dir }}/app/__init__.py"
         state: touch
@@ -78,18 +128,18 @@
         group: "{{ app_user }}"
         mode: '0644'
 
-    - name: creation of python virtual environment
+    - name: Creation of python virtual environment
       ansible.builtin.command: "python3 -m venv {{ venv_dir }}"
       args:
         creates: "{{ venv_dir }}/bin/python"
 
-    - name: installation of python dependencies from requirements file.
+    - name: Installation of python dependencies from requirements file.
       ansible.builtin.pip:
         requirements: "{{ app_dir }}/app/requirements.txt"
         virtualenv: "{{ venv_dir }}"
         virtualenv_command: python3 -m venv
 
-    - name: ensuring gunicorn and uvicorn are installed in venv
+    - name: Ensuring gunicorn and uvicorn are installed in venv
       ansible.builtin.pip:
         name:
           - gunicorn
@@ -98,14 +148,14 @@
         virtualenv_command: python3 -m venv
         state: present
 
-    - name: run sqlalchemy migrations (create tables)
+    - name: Run sqlalchemy migrations (create tables)
       ansible.builtin.shell:
         cmd: "{{ venv_dir }}/bin/python -c \"from app.database import Base, engine; Base.metadata.create_all(bind=engine)\""
         chdir: "{{ app_dir }}"
       environment:
         DATABASE_URL: "{{ database_url }}"
 
-    - name: creating systemd service file for fastapi app
+    - name: Creating systemd service file for fastapi app
       ansible.builtin.template:
         src: fastapi_app.service.j2
         dest: /etc/systemd/system/fastapi_app.service
@@ -117,6 +167,8 @@
         - Start FastAPI app
 
   handlers:
+    # These handlers use the 'systemd' module, which is compatible on any OS
+    # that uses systemd (modern Debian/Ubuntu and RedHat/CentOS all do).
     - name: Reload systemd
       ansible.builtin.systemd:
         daemon_reload: yes
