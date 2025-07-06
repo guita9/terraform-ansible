@@ -143,3 +143,12 @@ Before using this playbook, ensure you have:
 ├── hosts                       # Ansible inventory file (define your target servers here)
 └── sanjayssh.pem               # Your SSH private key for server authentication
 ```
+
+## Setup and Usage
+
+### 1. Clone the Repository
+
+```bash
+git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
+cd your-repo-name
+```
