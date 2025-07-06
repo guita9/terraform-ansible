@@ -175,3 +175,73 @@ your_server_ip_or_hostname ansible_user=ubuntu ansible_private_key_file=./sanjay
    - ansible_user: The SSH username Ansible will use to connect. Common users are ubuntu (for Ubuntu), ec2-user (for Amazon Linux), centos (for CentOS/Rocky Linux).
 
    - ansible_private_key_file: Path to your SSH private key.
+
+### 4. Place Your FastAPI Application
+
+Ensure your FastAPI application code is placed inside the app/ directory at the root of this repository. The requirements.txt file is crucial for dependency installation.
+
+### 5. Run the Ansible Playbook
+
+Execute the playbook from your repository's root directory:
+```bash
+ansible-playbook -i hosts deploy_fastapi.yml
+```
+Ansible will connect to your specified server(s) and begin the deployment process. Monitor the output for any errors.
+
+### What the Playbook Does
+
+The deploy_fastapi.yml playbook performs the following steps:
+
+   - System Update: Updates the package cache (apt for Debian/Ubuntu, dnf for Red Hat-based).
+
+   - Install Common Dependencies: Installs python3, python3-pip, virtual environment tools (python3-venv or python3-virtualenv), and compilation tools (build-essential or gcc, libpq-dev or postgresql-devel / python3-devel) based on the detected OS family.
+
+   - Install PostgreSQL: Installs the PostgreSQL server and its contrib packages.
+
+   - Configure PostgreSQL: Ensures the PostgreSQL service is running, sets a password for the postgres user, and creates the application database (mycruddb) if it doesn't exist.
+
+   - Application Directory Setup: Creates the /var/www/fastapi_app directory on the server with appropriate permissions.
+
+   - Copy Application Code: Transfers your entire app/ directory from your local machine to /var/www/fastapi_app/ on the server.
+
+   - Create Virtual Environment: Sets up a dedicated Python virtual environment within /var/www/fastapi_app/venv.
+
+   - Install Python Dependencies: Installs all packages listed in app/requirements.txt into the virtual environment.
+
+   - Install Gunicorn & Uvicorn: Ensures these production-ready servers are installed in the virtual environment.
+
+   - Run SQLAlchemy Migrations: Executes a Python script to create your database tables based on your SQLAlchemy models.
+
+   - Create Systemd Service: Generates a systemd service file (/etc/systemd/system/fastapi_app.service) from the fastapi_app.service.j2 template, configuring your FastAPI app to run as a service.
+
+   - Start Application Service: Reloads systemd and starts (and enables on boot) the fastapi_app service.
+
+### Customization
+
+   - Variables: Modify the vars section in deploy_fastapi.yml to change application directory, port, database names, or user.
+
+   - FastAPI Service Template (fastapi_app.service.j2): Adjust the Gunicorn command, worker count, or other service parameters.
+
+   - OS-Specific Users: If your Red Hat-based system uses a different default user than ubuntu (e.g., ec2-user, centos), you might need to adjust the app_user variable in deploy_fastapi.yml or add a task to ensure that user exists on the target system.
+
+### Troubleshooting
+
+   -SSH Connectivity: Ensure your sanjayssh.pem key is correct, has chmod 400 permissions, and the ansible_user has SSH access.
+
+   - Sudo Privileges: Verify that the ansible_user on the remote server can run sudo commands without password prompts.
+
+   - Package Name Errors: If the playbook fails on package installation, double-check the package names for your specific OS distribution and version. Refer to its documentation (e.g., dnf search <package-name> or apt search <package-name>).
+
+   - Application Errors: If the FastAPI service fails to start, check the application logs on the server:
+```bash
+sudo journalctl -u fastapi_app.service -f
+```
+This will show you real-time logs from your application.
+
+-PostgreSQL Issues: If database connection errors occur, check PostgreSQL logs and ensure the service is running:
+```bash
+
+    sudo systemctl status postgresql
+    # On Debian/Ubuntu: sudo journalctl -u postgresql -f
+    # On RedHat: sudo journalctl -u postgresql -f
+```
