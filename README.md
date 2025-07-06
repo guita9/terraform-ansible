@@ -152,3 +152,26 @@ Before using this playbook, ensure you have:
 git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
 cd your-repo-name
 ```
+
+### 2. Prepare your Ansible Environment
+
+Ensure your sanjayssh.pem file has the correct permissions (read-only for the owner):
+```bash
+chmod 400 sanjayssh.pem
+```
+### 3. Configure Inventory (hosts file)
+
+Edit the hosts file to specify your target server(s). Replace the example IP address with your actual server IP and adjust the ansible_user if different.
+Ini, TOML
+```bash
+# hosts
+[app-deployment_servers]
+# Replace with your server's IP address or hostname
+your_server_ip_or_hostname ansible_user=ubuntu ansible_private_key_file=./sanjayssh.pem
+```
+
+   - your_server_ip_or_hostname: The IP address or DNS name of your remote server.
+
+   - ansible_user: The SSH username Ansible will use to connect. Common users are ubuntu (for Ubuntu), ec2-user (for Amazon Linux), centos (for CentOS/Rocky Linux).
+
+   - ansible_private_key_file: Path to your SSH private key.
