@@ -131,3 +131,15 @@ Before using this playbook, ensure you have:
     ```
 
 ## Repository Structure
+```bash
+├── app/                        # Your FastAPI application code goes here
+│   ├── main.py
+│   ├── database.py
+│   ├── models.py
+│   ├── schemas.py
+│   └── requirements.txt
+├── deploy_fastapi.yml          # The main Ansible playbook for deployment
+├── fastapi_app.service.j2      # Jinja2 template for the systemd service file
+├── hosts                       # Ansible inventory file (define your target servers here)
+└── sanjayssh.pem               # Your SSH private key for server authentication
+```
