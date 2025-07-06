@@ -94,8 +94,6 @@ This repository contains Ansible playbooks and configuration files to automate t
 - [What the Playbook Does](#what-the-playbook-does)
 - [Customization](#customization)
 - [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
 
 ## Features
 
